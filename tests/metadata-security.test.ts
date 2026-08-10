@@ -31,6 +31,13 @@ describe("security configuration", () => {
     }
   });
 
+  it("uses the current Nhost Auth database column names", () => {
+    const users = read("nhost/metadata/databases/default/tables/auth_users.yaml");
+    expect(users).toContain("display_name");
+    expect(users).toContain("avatar_url");
+    expect(users).not.toContain("displayName");
+  });
+
   it("makes dangerous nodes and webhook triggers owner-only", () => {
     const steps = read("nhost/metadata/databases/default/tables/public_workflow_steps.yaml");
     const triggers = read("nhost/metadata/databases/default/tables/public_workflow_triggers.yaml");
