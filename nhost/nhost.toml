@@ -22,6 +22,9 @@ hibpEnabled = false
 emailVerificationRequired = false
 passwordMinLength = 9
 
+[postgres.resources]
+enablePublicAccess = true
+
 [postgres.resources.storage]
 capacity = 1
 
