@@ -21,7 +21,10 @@ function createPool() {
 }
 
 export const pool = globalThis.__agentForgePool ?? createPool();
-if (process.env.NODE_ENV !== "production") globalThis.__agentForgePool = pool;
+// Nhost Functions reuse warm Lambda runtimes. Keep the pool on globalThis so
+// consecutive Action/Event invocations reuse established Postgres connections
+// instead of spending most of the 10 second function budget reconnecting.
+globalThis.__agentForgePool = pool;
 
 export async function transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
