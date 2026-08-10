@@ -13,6 +13,9 @@ version = "0.40.0"
 [postgres.resources.storage]
 capacity = 1
 
+[observability.grafana]
+adminPassword = "{{ secrets.GRAFANA_ADMIN_PASSWORD }}"
+
 [functions]
 node.version = 22
 
