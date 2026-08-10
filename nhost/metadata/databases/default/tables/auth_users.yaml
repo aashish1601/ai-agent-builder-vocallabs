@@ -69,6 +69,16 @@ array_relationships:
       foreign_key_constraint_on:
         column: user_id
         table: { name: org_members, schema: public }
+  - name: roles
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table: { name: user_roles, schema: auth }
+  - name: userProviders
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table: { name: user_providers, schema: auth }
 select_permissions:
   - role: user
     permission:

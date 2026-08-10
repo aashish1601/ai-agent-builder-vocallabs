@@ -11,4 +11,7 @@
 - "!include public_workflow_signals.yaml"
 - "!include public_audit_events.yaml"
 - "!include public_organization_usage_monthly.yaml"
+- "!include auth_roles.yaml"
+- "!include auth_user_roles.yaml"
+- "!include auth_user_providers.yaml"
 - "!include auth_users.yaml"

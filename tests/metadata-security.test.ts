@@ -36,6 +36,9 @@ describe("security configuration", () => {
     expect(users).toContain("columns: [id, display_name, avatar_url, email]");
     expect(users).toContain("display_name: { custom_name: displayName }");
     expect(users).toContain("select: users");
+    expect(users).toContain("name: roles");
+    expect(users).toContain("name: userProviders");
+    expect(read("nhost/metadata/databases/default/tables/auth_roles.yaml")).toContain("select: authRoles");
   });
 
   it("makes dangerous nodes and webhook triggers owner-only", () => {
