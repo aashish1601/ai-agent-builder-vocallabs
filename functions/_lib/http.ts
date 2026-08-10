@@ -34,7 +34,11 @@ export function verifyInternalWebhook(req: Request): void {
 export function sendError(res: Response, error: unknown) {
   const known = error instanceof HttpError;
   const status = known ? error.status : 500;
-  const message = known ? error.message : "The workflow service could not complete the request";
+  const message = known
+    ? error.message
+    : error instanceof Error
+      ? `Workflow service failure: ${error.message}`
+      : "The workflow service could not complete the request";
   if (!known) console.error(error);
   return res.status(status).json({
     message,
