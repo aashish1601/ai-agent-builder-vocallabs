@@ -10,10 +10,6 @@ key = "{{ secrets.HASURA_GRAPHQL_JWT_SECRET }}"
 [auth]
 version = "0.49.1"
 
-[auth.redirections]
-clientUrl = "https://ai-agent-builder-vocallabs.vercel.app"
-allowedUrls = ["https://ai-agent-builder-vocallabs.vercel.app", "http://localhost:3000"]
-
 [auth.signUp]
 enabled = true
 
