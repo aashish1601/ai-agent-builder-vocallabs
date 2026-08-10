@@ -278,7 +278,7 @@ export async function createWorkflowRun(options: StartRunOptions) {
       quota_reserved: number;
       quota_period_start: string;
     }>(
-      `SELECT quota_allowed, quota_used, quota_reserved, quota_period_start
+      `SELECT quota_allowed, quota_used, quota_reserved, quota_period_start::text AS quota_period_start
          FROM public.organizations WHERE id = $1 FOR UPDATE`,
       [workflow.organization_id],
     );

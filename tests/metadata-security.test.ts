@@ -57,4 +57,11 @@ describe("security configuration", () => {
       expect(read(`functions/actions/${handler}`)).toContain("verifyInternalWebhook(req)");
     }
   });
+
+  it("keeps cloud database access deploy-safe and avoids resetting current-month quota", () => {
+    expect(read("nhost/nhost.toml")).toContain("enablePublicAccess = true");
+    expect(read("functions/_lib/workflow-service.ts")).toContain(
+      "quota_period_start::text AS quota_period_start",
+    );
+  });
 });
