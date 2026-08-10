@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { Pool } from "pg";
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL ?? "";
 const authUrl = (process.env.NHOST_AUTH_URL ?? "https://local.auth.local.nhost.run/v1").replace(/\/$/, "");
 const password = process.env.DEMO_PASSWORD ?? "AgentForge!2026";
 
 if (!databaseUrl) throw new Error("Set DATABASE_URL before running the demo seed");
 
+async function main() {
 const users = [
   { email: "owner-a@agentforge.demo", name: "Avery Morgan" },
   { email: "editor-a@agentforge.demo", name: "Sam Rivera" },
@@ -115,3 +116,9 @@ try {
   client.release();
   await pool.end();
 }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

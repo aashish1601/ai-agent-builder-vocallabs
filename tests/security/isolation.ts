@@ -21,26 +21,33 @@ async function request(token: string, query: string, variables: Record<string, u
   return response.json() as Promise<{ data?: Record<string, unknown>; errors?: Array<{ message: string }> }>;
 }
 
-const byId = `query GuessWorkflow($id: uuid!) { workflows_by_pk(id: $id) { id name } }`;
-const orgARead = await request(orgAToken!, byId, { id: orgAWorkflowId });
-if (!(orgARead.data?.workflows_by_pk as { id?: string } | null)?.id) throw new Error("Org A owner could not read its workflow");
+async function main() {
+  const byId = `query GuessWorkflow($id: uuid!) { workflows_by_pk(id: $id) { id name } }`;
+  const orgARead = await request(orgAToken!, byId, { id: orgAWorkflowId });
+  if (!(orgARead.data?.workflows_by_pk as { id?: string } | null)?.id) throw new Error("Org A owner could not read its workflow");
 
-const orgBRead = await request(orgBToken!, byId, { id: orgAWorkflowId });
-if (orgBRead.data?.workflows_by_pk !== null) throw new Error("Cross-org direct ID read was not isolated");
+  const orgBRead = await request(orgBToken!, byId, { id: orgAWorkflowId });
+  if (orgBRead.data?.workflows_by_pk !== null) throw new Error("Cross-org direct ID read was not isolated");
 
-const runMutation = `mutation GuessRun($id: uuid!) { triggerWorkflowRun(workflow_id: $id, input: {}, client_request_id: "isolation-test") { run_id } }`;
-const orgBRun = await request(orgBToken!, runMutation, { id: orgAWorkflowId });
-if (!orgBRun.errors?.length) throw new Error("Org B was able to trigger Org A workflow");
+  const runMutation = `mutation GuessRun($id: uuid!) { triggerWorkflowRun(workflow_id: $id, input: {}, client_request_id: "isolation-test") { run_id } }`;
+  const orgBRun = await request(orgBToken!, runMutation, { id: orgAWorkflowId });
+  if (!orgBRun.errors?.length) throw new Error("Org B was able to trigger Org A workflow");
 
-const viewerRun = await request(viewerToken!, runMutation, { id: orgAWorkflowId });
-if (!viewerRun.errors?.length) throw new Error("Viewer was able to trigger a workflow");
+  const viewerRun = await request(viewerToken!, runMutation, { id: orgAWorkflowId });
+  if (!viewerRun.errors?.length) throw new Error("Viewer was able to trigger a workflow");
 
-const approveMutation = `mutation GuessApproval($id: uuid!) { approveStep(step_run_id: $id) { run_id } }`;
-const orgBApprove = await request(orgBToken!, approveMutation, { id: orgAStepRunId });
-if (!orgBApprove.errors?.length) throw new Error("Org B was able to approve Org A step");
+  const approveMutation = `mutation GuessApproval($id: uuid!) { approveStep(step_run_id: $id) { run_id } }`;
+  const orgBApprove = await request(orgBToken!, approveMutation, { id: orgAStepRunId });
+  if (!orgBApprove.errors?.length) throw new Error("Org B was able to approve Org A step");
 
-console.log("PASS: Org A can read its workflow");
-console.log("PASS: Org B direct-ID read returned null");
-console.log("PASS: Org B trigger was denied");
-console.log("PASS: Viewer trigger was denied");
-console.log("PASS: Org B approval was denied");
+  console.log("PASS: Org A can read its workflow");
+  console.log("PASS: Org B direct-ID read returned null");
+  console.log("PASS: Org B trigger was denied");
+  console.log("PASS: Viewer trigger was denied");
+  console.log("PASS: Org B approval was denied");
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
