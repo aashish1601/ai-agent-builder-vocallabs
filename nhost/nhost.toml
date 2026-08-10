@@ -1,5 +1,11 @@
 [hasura]
 version = "v2.49.1"
+adminSecret = "{{ secrets.HASURA_GRAPHQL_ADMIN_SECRET }}"
+webhookSecret = "{{ secrets.NHOST_WEBHOOK_SECRET }}"
+
+[[hasura.jwtSecrets]]
+type = "HS256"
+key = "{{ secrets.HASURA_GRAPHQL_JWT_SECRET }}"
 
 [auth]
 version = "0.40.0"
