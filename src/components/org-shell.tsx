@@ -33,16 +33,18 @@ function OrgShellInner({ organizationId, children }: { organizationId: string; c
 
   useEffect(() => {
     if (demoMode) { setValue({ organization: demoOrganization, role: "owner", loading: false }); return; }
-    graphql<{ org_members: Array<{ role: Role; organization: typeof demoOrganization }> }>(`query OrganizationContext($id: uuid!) {
-      org_members(where: {organization_id: {_eq: $id}}, limit: 1) {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    graphql<{ org_members: Array<{ role: Role; organization: typeof demoOrganization }> }>(`query OrganizationContext($id: uuid!, $userId: uuid!) {
+      org_members(where: {_and: [{organization_id: {_eq: $id}}, {user_id: {_eq: $userId}}]}, limit: 1) {
         role
         organization { id name slug quota_allowed quota_used quota_reserved }
       }
-    }`, { id: organizationId }).then(({ org_members }) => {
+    }`, { id: organizationId, userId }).then(({ org_members }) => {
       if (!org_members[0]) router.replace("/workspace");
       else setValue({ ...org_members[0], loading: false });
     });
-  }, [organizationId, router]);
+  }, [organizationId, router, session?.user?.id]);
 
   const quotaPercentage = Math.min(100, Math.round((value.organization.quota_used / value.organization.quota_allowed) * 100));
   const nav = useMemo(() => [

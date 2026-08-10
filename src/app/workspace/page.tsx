@@ -31,16 +31,18 @@ function WorkspaceChooser() {
       setLoading(false);
       return;
     }
-    graphql<{ org_members: Membership[] }>(`query MyOrganizations {
-      org_members(order_by: {created_at: asc}) {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    graphql<{ org_members: Membership[] }>(`query MyOrganizations($userId: uuid!) {
+      org_members(where: {user_id: {_eq: $userId}}, order_by: {created_at: asc}) {
         role
         organization { id name slug quota_allowed quota_used quota_reserved }
       }
-    }`).then((data) => {
+    }`, { userId }).then((data) => {
       setMemberships(data.org_members);
       if (data.org_members.length === 1) router.replace(`/org/${data.org_members[0].organization.id}/workflows`);
     }).finally(() => setLoading(false));
-  }, [router]);
+  }, [router, session?.user?.id]);
 
   return (
     <main className="workspace-picker">
