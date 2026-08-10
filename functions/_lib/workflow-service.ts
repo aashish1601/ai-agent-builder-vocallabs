@@ -175,6 +175,7 @@ export async function saveWorkflow(spec: WorkflowSpec, userId: string) {
     }
 
     const oldTriggerById = new Map(existingTriggers.map((trigger) => [trigger.id, trigger]));
+    const oldTriggerByType = new Map(existingTriggers.map((trigger) => [trigger.type, trigger]));
     await client.query(`DELETE FROM public.workflow_steps WHERE workflow_id = $1`, [workflowId]);
     await client.query(`DELETE FROM public.workflow_triggers WHERE workflow_id = $1`, [workflowId]);
 
@@ -198,7 +199,7 @@ export async function saveWorkflow(spec: WorkflowSpec, userId: string) {
 
     let revealedWebhookSecret: string | null = null;
     for (const trigger of spec.triggers) {
-      const old = trigger.id ? oldTriggerById.get(trigger.id) : undefined;
+      const old = (trigger.id ? oldTriggerById.get(trigger.id) : undefined) ?? oldTriggerByType.get(trigger.type);
       let hash = trigger.type === "webhook" ? old?.secret_hash ?? null : null;
       if (trigger.type === "webhook" && !hash) {
         revealedWebhookSecret = randomBytes(32).toString("base64url");

@@ -64,4 +64,10 @@ describe("security configuration", () => {
       "quota_period_start::text AS quota_period_start",
     );
   });
+
+  it("preserves webhook secrets when a newly added trigger has no client-side id", () => {
+    const service = read("functions/_lib/workflow-service.ts");
+    expect(service).toContain("oldTriggerByType");
+    expect(service).toContain("?? oldTriggerByType.get(trigger.type)");
+  });
 });
