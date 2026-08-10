@@ -176,28 +176,37 @@ export async function saveWorkflow(spec: WorkflowSpec, userId: string) {
 
     const oldTriggerById = new Map(existingTriggers.map((trigger) => [trigger.id, trigger]));
     const oldTriggerByType = new Map(existingTriggers.map((trigger) => [trigger.type, trigger]));
-    await client.query(`DELETE FROM public.workflow_steps WHERE workflow_id = $1`, [workflowId]);
-    await client.query(`DELETE FROM public.workflow_triggers WHERE workflow_id = $1`, [workflowId]);
+    await client.query(
+      `WITH deleted_steps AS (
+         DELETE FROM public.workflow_steps WHERE workflow_id = $1 RETURNING id
+       )
+       DELETE FROM public.workflow_triggers WHERE workflow_id = $1`,
+      [workflowId],
+    );
 
-    for (const [position, step] of spec.steps.entries()) {
-      await client.query(
-        `INSERT INTO public.workflow_steps
-          (id, workflow_id, step_key, name, position, type, config, next_step_key)
-         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7::jsonb, $8)`,
-        [
-          step.id ?? null,
-          workflowId,
-          step.step_key,
-          step.name,
-          position,
-          step.type,
-          JSON.stringify(step.config),
-          step.next_step_key ?? null,
-        ],
-      );
-    }
+    const stepRows = spec.steps.map((step, position) => ({
+      id: step.id ?? null,
+      step_key: step.step_key,
+      name: step.name,
+      position,
+      type: step.type,
+      config: step.config,
+      next_step_key: step.next_step_key ?? null,
+    }));
+    await client.query(
+      `INSERT INTO public.workflow_steps
+        (id, workflow_id, step_key, name, position, type, config, next_step_key)
+       SELECT COALESCE(item.id, gen_random_uuid()), $1, item.step_key, item.name,
+              item.position, item.type, item.config, item.next_step_key
+         FROM jsonb_to_recordset($2::jsonb) AS item(
+           id uuid, step_key text, name text, position integer, type text,
+           config jsonb, next_step_key text
+         )`,
+      [workflowId, JSON.stringify(stepRows)],
+    );
 
     let revealedWebhookSecret: string | null = null;
+    const triggerRows = [];
     for (const trigger of spec.triggers) {
       const old = (trigger.id ? oldTriggerById.get(trigger.id) : undefined) ?? oldTriggerByType.get(trigger.type);
       let hash = trigger.type === "webhook" ? old?.secret_hash ?? null : null;
@@ -207,21 +216,26 @@ export async function saveWorkflow(spec: WorkflowSpec, userId: string) {
       }
       const interval = Number(trigger.config.interval_minutes ?? 60);
       const nextRunAt = trigger.type === "scheduled" ? new Date(Date.now() + Math.max(1, interval) * 60_000) : null;
-      await client.query(
-        `INSERT INTO public.workflow_triggers
-          (id, workflow_id, type, config, secret_hash, enabled, next_run_at)
-         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4::jsonb, $5, $6, $7)`,
-        [
-          trigger.id ?? null,
-          workflowId,
-          trigger.type,
-          JSON.stringify(trigger.config),
-          hash,
-          trigger.enabled ?? true,
-          nextRunAt,
-        ],
-      );
+      triggerRows.push({
+        id: trigger.id ?? null,
+        type: trigger.type,
+        config: trigger.config,
+        secret_hash: hash,
+        enabled: trigger.enabled ?? true,
+        next_run_at: nextRunAt?.toISOString() ?? null,
+      });
     }
+    await client.query(
+      `INSERT INTO public.workflow_triggers
+        (id, workflow_id, type, config, secret_hash, enabled, next_run_at)
+       SELECT COALESCE(item.id, gen_random_uuid()), $1, item.type, item.config,
+              item.secret_hash, item.enabled, item.next_run_at
+         FROM jsonb_to_recordset($2::jsonb) AS item(
+           id uuid, type text, config jsonb, secret_hash text,
+           enabled boolean, next_run_at timestamptz
+         )`,
+      [workflowId, JSON.stringify(triggerRows)],
+    );
 
     await client.query(
       `INSERT INTO public.audit_events
