@@ -4,11 +4,9 @@ AgentForge is a multi-tenant AI workflow operations platform built for the Vocal
 
 ## Submission links
 
-Fill these after deployment:
-
-- GitHub: `https://github.com/<your-account>/agent-forge`
-- Live app: `https://<your-vercel-project>.vercel.app`
-- Demo recording: `<recording URL>`
+- GitHub: [github.com/aashish1601/ai-agent-builder-vocallabs](https://github.com/aashish1601/ai-agent-builder-vocallabs)
+- Live app: [ai-agent-builder-vocallabs.vercel.app](https://ai-agent-builder-vocallabs.vercel.app/)
+- Demo recording: [Google Drive video](https://drive.google.com/file/d/10Bxxg7AVgICUKjcCqTlzJFsH5XxoR0Sq/view?usp=sharing)
 
 ## Assignment coverage
 
