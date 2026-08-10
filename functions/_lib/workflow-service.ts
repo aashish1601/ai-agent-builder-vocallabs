@@ -421,8 +421,8 @@ export async function approvePausedStep(stepRunId: string, userId: string) {
 
     await client.query(
       `UPDATE public.step_runs
-          SET status = 'succeeded', approved_by = $2, approved_at = now(), completed_at = now(),
-              output = jsonb_build_object('approved', true, 'approved_by', $2::text)
+          SET status = 'succeeded', approved_by = $2::uuid, approved_at = now(), completed_at = now(),
+              output = jsonb_build_object('approved', true, 'approved_by', ($2::uuid)::text)
         WHERE id = $1`,
       [step.id, userId],
     );
