@@ -33,9 +33,9 @@ describe("security configuration", () => {
 
   it("uses the current Nhost Auth database column names", () => {
     const users = read("nhost/metadata/databases/default/tables/auth_users.yaml");
-    expect(users).toContain("display_name");
-    expect(users).toContain("avatar_url");
-    expect(users).not.toContain("displayName");
+    expect(users).toContain("columns: [id, display_name, avatar_url, email]");
+    expect(users).toContain("display_name: { custom_name: displayName }");
+    expect(users).toContain("select: users");
   });
 
   it("makes dangerous nodes and webhook triggers owner-only", () => {
