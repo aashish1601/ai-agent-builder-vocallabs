@@ -60,9 +60,17 @@ describe("security configuration", () => {
 
   it("keeps cloud database access deploy-safe and avoids resetting current-month quota", () => {
     expect(read("nhost/nhost.toml")).toContain("enablePublicAccess = true");
-    expect(read("functions/_lib/workflow-service.ts")).toContain(
-      "quota_period_start::text AS quota_period_start",
-    );
+    const service = read("functions/_lib/workflow-service.ts");
+    expect(service).toContain("date_trunc('month', organization.quota_period_start)");
+    expect(service).toContain("THEN organization.quota_used + organization.quota_reserved");
+  });
+
+  it("creates a run snapshot with one atomic database statement", () => {
+    const service = read("functions/_lib/workflow-service.ts");
+    expect(service).toContain("WITH request AS MATERIALIZED");
+    expect(service).toContain("inserted_steps AS");
+    expect(service).toContain("inserted_job AS");
+    expect(service).not.toContain("for (const step of steps.rows)");
   });
 
   it("preserves webhook secrets when a newly added trigger has no client-side id", () => {

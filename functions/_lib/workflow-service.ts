@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
-import { transaction } from "./db";
+import { pool, transaction } from "./db";
 import { HttpError } from "./http";
 import type { OrgRole, StepInput, TriggerInput, TriggerType, WorkflowSpec } from "./types";
 
@@ -259,126 +259,165 @@ export interface StartRunOptions {
 }
 
 export async function createWorkflowRun(options: StartRunOptions) {
-  return transaction(async (client) => {
-    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-      `${options.workflowId}:${options.idempotencyKey}`,
-    ]);
+  if (options.requireInteractiveRole && !options.userId) {
+    throw new HttpError("Authentication required", 401, "unauthenticated");
+  }
 
-    const duplicate = await client.query<{ id: string; status: string }>(
-      `SELECT id, status FROM public.workflow_runs
-        WHERE workflow_id = $1 AND idempotency_key = $2`,
-      [options.workflowId, options.idempotencyKey],
-    );
-    if (duplicate.rows[0]) return { runId: duplicate.rows[0].id, status: duplicate.rows[0].status };
+  const result = await pool.query<{
+    run_id: string | null;
+    run_status: string | null;
+    error_code: "not-found" | "invalid-workflow" | "quota-exhausted" | null;
+  }>(
+    `WITH request AS MATERIALIZED (
+       SELECT $1::uuid AS workflow_id,
+              $2::uuid AS trigger_id,
+              $3::text AS trigger_type,
+              $4::jsonb AS run_input,
+              $5::text AS idempotency_key,
+              $6::uuid AS user_id,
+              $7::boolean AS require_interactive_role,
+              pg_advisory_xact_lock(hashtextextended($1::text || ':' || $5, 0)) AS locked
+     ),
+     context AS MATERIALIZED (
+       SELECT request.*,
+              workflow.id AS found_workflow_id,
+              workflow.organization_id,
+              workflow.version,
+              workflow.enabled,
+              workflow.archived_at,
+              organization.quota_allowed,
+              organization.quota_used,
+              organization.quota_reserved,
+              organization.quota_period_start,
+              existing_run.id AS existing_run_id,
+              existing_run.status AS existing_run_status,
+              EXISTS (
+                SELECT 1 FROM public.org_members member
+                 WHERE member.organization_id = workflow.organization_id
+                   AND member.user_id = request.user_id
+                   AND member.role IN ('owner', 'editor')
+              ) AS can_start,
+              EXISTS (
+                SELECT 1 FROM public.workflow_steps step
+                 WHERE step.workflow_id = workflow.id
+              ) AS has_steps
+         FROM request
+         LEFT JOIN public.workflows workflow ON workflow.id = request.workflow_id
+         LEFT JOIN public.organizations organization ON organization.id = workflow.organization_id
+         LEFT JOIN public.workflow_runs existing_run
+           ON existing_run.workflow_id = request.workflow_id
+          AND existing_run.idempotency_key = request.idempotency_key
+     ),
+     checked AS MATERIALIZED (
+       SELECT context.*,
+              CASE
+                WHEN found_workflow_id IS NULL OR NOT enabled OR archived_at IS NOT NULL THEN 'not-found'
+                WHEN require_interactive_role AND NOT can_start THEN 'not-found'
+                WHEN NOT has_steps THEN 'invalid-workflow'
+                ELSE NULL
+              END AS pre_error
+         FROM context
+     ),
+     reserved AS (
+       UPDATE public.organizations organization
+          SET quota_used = CASE
+                WHEN date_trunc('month', organization.quota_period_start) = date_trunc('month', now())
+                  THEN organization.quota_used ELSE 0
+              END,
+              quota_reserved = CASE
+                WHEN date_trunc('month', organization.quota_period_start) = date_trunc('month', now())
+                  THEN organization.quota_reserved + 1 ELSE 1
+              END,
+              quota_period_start = date_trunc('month', now())::date
+         FROM checked
+        WHERE organization.id = checked.organization_id
+          AND checked.pre_error IS NULL
+          AND checked.existing_run_id IS NULL
+          AND (
+            CASE
+              WHEN date_trunc('month', organization.quota_period_start) = date_trunc('month', now())
+                THEN organization.quota_used + organization.quota_reserved
+              ELSE 0
+            END
+          ) < organization.quota_allowed
+       RETURNING organization.id
+     ),
+     inserted_run AS (
+       INSERT INTO public.workflow_runs
+         (workflow_id, organization_id, trigger_id, trigger_type, status, input,
+          definition_version, idempotency_key, started_by)
+       SELECT checked.found_workflow_id, checked.organization_id, checked.trigger_id,
+              checked.trigger_type, 'queued', checked.run_input, checked.version,
+              checked.idempotency_key, checked.user_id
+         FROM checked
+         JOIN reserved ON reserved.id = checked.organization_id
+       ON CONFLICT (workflow_id, idempotency_key)
+         WHERE idempotency_key IS NOT NULL
+       DO NOTHING
+       RETURNING id, status
+     ),
+     inserted_steps AS (
+       INSERT INTO public.step_runs
+         (workflow_run_id, source_step_id, step_key, name, position, type, config_snapshot, next_step_key)
+       SELECT inserted_run.id, step.id, step.step_key, step.name, step.position,
+              step.type, step.config, step.next_step_key
+         FROM inserted_run
+         JOIN public.workflow_steps step ON step.workflow_id = $1::uuid
+        ORDER BY step.position
+       RETURNING id, workflow_run_id, position
+     ),
+     inserted_job AS (
+       INSERT INTO public.workflow_jobs (workflow_run_id, step_run_id)
+       SELECT workflow_run_id, id
+         FROM inserted_steps
+        ORDER BY position
+        LIMIT 1
+       RETURNING id
+     ),
+     inserted_audit AS (
+       INSERT INTO public.audit_events
+         (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+       SELECT checked.organization_id, checked.user_id, 'workflow.run_started',
+              'workflow_run', inserted_run.id,
+              jsonb_build_object('trigger_type', checked.trigger_type)
+         FROM checked
+         JOIN inserted_run ON true
+       RETURNING id
+     )
+     SELECT COALESCE(checked.existing_run_id, inserted_run.id) AS run_id,
+            COALESCE(checked.existing_run_status, inserted_run.status) AS run_status,
+            CASE
+              WHEN checked.pre_error IS NOT NULL THEN checked.pre_error
+              WHEN checked.existing_run_id IS NULL AND inserted_run.id IS NULL THEN 'quota-exhausted'
+              ELSE NULL
+            END AS error_code
+       FROM checked
+       LEFT JOIN inserted_run ON true`,
+    [
+      options.workflowId,
+      options.triggerId ?? null,
+      options.triggerType,
+      JSON.stringify(options.input),
+      options.idempotencyKey,
+      options.userId ?? null,
+      options.requireInteractiveRole ?? false,
+    ],
+  );
 
-    const workflowResult = await client.query<WorkflowRow>(
-      `SELECT id, organization_id, version, enabled, archived_at
-         FROM public.workflows WHERE id = $1`,
-      [options.workflowId],
-    );
-    const workflow = workflowResult.rows[0];
-    if (!workflow || !workflow.enabled || workflow.archived_at) {
-      throw new HttpError("Workflow not found", 404, "not-found");
-    }
-
-    if (options.requireInteractiveRole) {
-      if (!options.userId) throw new HttpError("Authentication required", 401, "unauthenticated");
-      const role = await membershipRole(client, workflow.organization_id, options.userId);
-      if (!role || role === "viewer") throw new HttpError("Workflow not found", 404, "not-found");
-    }
-
-    const orgResult = await client.query<{
-      quota_allowed: number;
-      quota_used: number;
-      quota_reserved: number;
-      quota_period_start: string;
-    }>(
-      `SELECT quota_allowed, quota_used, quota_reserved, quota_period_start::text AS quota_period_start
-         FROM public.organizations WHERE id = $1 FOR UPDATE`,
-      [workflow.organization_id],
-    );
-    const org = orgResult.rows[0];
-    if (!org) throw new HttpError("Workflow not found", 404, "not-found");
-
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    if (String(org.quota_period_start).slice(0, 7) !== currentMonth) {
-      org.quota_used = 0;
-      org.quota_reserved = 0;
-      await client.query(
-        `UPDATE public.organizations
-            SET quota_used = 0, quota_reserved = 0, quota_period_start = date_trunc('month', now())::date
-          WHERE id = $1`,
-        [workflow.organization_id],
-      );
-    }
-    if (org.quota_used + org.quota_reserved >= org.quota_allowed) {
-      throw new HttpError("Organization workflow quota is exhausted", 429, "quota-exhausted");
-    }
-
-    const steps = await client.query<{
-      id: string;
-      step_key: string;
-      name: string;
-      position: number;
-      type: string;
-      config: Record<string, unknown>;
-      next_step_key: string | null;
-    }>(
-      `SELECT id, step_key, name, position, type, config, next_step_key
-         FROM public.workflow_steps
-        WHERE workflow_id = $1 ORDER BY position`,
-      [workflow.id],
-    );
-    if (!steps.rows.length) throw new HttpError("Workflow has no steps", 409, "invalid-workflow");
-
-    const runResult = await client.query<{ id: string }>(
-      `INSERT INTO public.workflow_runs
-        (workflow_id, organization_id, trigger_id, trigger_type, status, input,
-         definition_version, idempotency_key, started_by)
-       VALUES ($1, $2, $3, $4, 'queued', $5::jsonb, $6, $7, $8)
-       RETURNING id`,
-      [
-        workflow.id,
-        workflow.organization_id,
-        options.triggerId ?? null,
-        options.triggerType,
-        JSON.stringify(options.input),
-        workflow.version,
-        options.idempotencyKey,
-        options.userId ?? null,
-      ],
-    );
-    const runId = runResult.rows[0].id;
-
-    let firstStepRunId: string | null = null;
-    for (const step of steps.rows) {
-      const stepResult = await client.query<{ id: string }>(
-        `INSERT INTO public.step_runs
-          (workflow_run_id, source_step_id, step_key, name, position, type, config_snapshot, next_step_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
-         RETURNING id`,
-        [runId, step.id, step.step_key, step.name, step.position, step.type, JSON.stringify(step.config), step.next_step_key],
-      );
-      if (!firstStepRunId) firstStepRunId = stepResult.rows[0].id;
-    }
-
-    await client.query(
-      `INSERT INTO public.workflow_jobs (workflow_run_id, step_run_id)
-       VALUES ($1, $2)`,
-      [runId, firstStepRunId],
-    );
-    await client.query(
-      `UPDATE public.organizations SET quota_reserved = quota_reserved + 1 WHERE id = $1`,
-      [workflow.organization_id],
-    );
-    await client.query(
-      `INSERT INTO public.audit_events
-        (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
-       VALUES ($1, $2, 'workflow.run_started', 'workflow_run', $3, $4::jsonb)`,
-      [workflow.organization_id, options.userId ?? null, runId, JSON.stringify({ trigger_type: options.triggerType })],
-    );
-    return { runId, status: "queued" };
-  });
+  const outcome = result.rows[0];
+  if (!outcome || outcome.error_code === "not-found") {
+    throw new HttpError("Workflow not found", 404, "not-found");
+  }
+  if (outcome.error_code === "invalid-workflow") {
+    throw new HttpError("Workflow has no steps", 409, "invalid-workflow");
+  }
+  if (outcome.error_code === "quota-exhausted") {
+    throw new HttpError("Organization workflow quota is exhausted", 429, "quota-exhausted");
+  }
+  if (!outcome.run_id || !outcome.run_status) {
+    throw new Error("Workflow run could not be created");
+  }
+  return { runId: outcome.run_id, status: outcome.run_status };
 }
 
 async function finishRun(client: PoolClient, runId: string, organizationId: string) {
