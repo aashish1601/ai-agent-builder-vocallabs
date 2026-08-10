@@ -10,6 +10,9 @@ key = "{{ secrets.HASURA_GRAPHQL_JWT_SECRET }}"
 [auth]
 version = "0.40.0"
 
+[postgres.resources.storage]
+capacity = 1
+
 [functions]
 node.version = 22
 
