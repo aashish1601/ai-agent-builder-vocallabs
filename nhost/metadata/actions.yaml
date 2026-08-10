@@ -1,0 +1,98 @@
+actions:
+  - name: saveWorkflow
+    definition:
+      arguments:
+        - name: spec
+          type: WorkflowSpecInput!
+      output_type: WorkflowMutationResult!
+      type: mutation
+      kind: synchronous
+      handler: "{{NHOST_FUNCTIONS_URL}}/actions/save-workflow"
+      headers: &action_headers
+        - name: x-nhost-webhook-secret
+          value_from_env: NHOST_WEBHOOK_SECRET
+    permissions:
+      - role: user
+  - name: triggerWorkflowRun
+    definition:
+      arguments:
+        - name: workflow_id
+          type: uuid!
+        - name: input
+          type: jsonb
+        - name: client_request_id
+          type: String
+      output_type: WorkflowMutationResult!
+      type: mutation
+      kind: synchronous
+      handler: "{{NHOST_FUNCTIONS_URL}}/actions/trigger-workflow-run"
+      headers: *action_headers
+    permissions:
+      - role: user
+  - name: approveStep
+    definition:
+      arguments:
+        - name: step_run_id
+          type: uuid!
+      output_type: WorkflowMutationResult!
+      type: mutation
+      kind: synchronous
+      handler: "{{NHOST_FUNCTIONS_URL}}/actions/approve-step"
+      headers: *action_headers
+    permissions:
+      - role: user
+  - name: triggerWorkflowWebhook
+    definition:
+      arguments:
+        - name: workflow_id
+          type: uuid!
+        - name: secret
+          type: String!
+        - name: payload
+          type: jsonb
+        - name: event_id
+          type: String
+      output_type: WorkflowMutationResult!
+      type: mutation
+      kind: synchronous
+      handler: "{{NHOST_FUNCTIONS_URL}}/actions/trigger-workflow-webhook"
+      headers: *action_headers
+    permissions:
+      - role: public
+custom_types:
+  enums: []
+  input_objects:
+    - name: WorkflowStepInput
+      fields:
+        - { name: id, type: uuid }
+        - { name: step_key, type: String! }
+        - { name: name, type: String! }
+        - { name: type, type: String! }
+        - { name: config, type: jsonb! }
+        - { name: next_step_key, type: String }
+    - name: WorkflowTriggerInput
+      fields:
+        - { name: id, type: uuid }
+        - { name: type, type: String! }
+        - { name: enabled, type: Boolean! }
+        - { name: config, type: jsonb! }
+    - name: WorkflowSpecInput
+      fields:
+        - { name: workflow_id, type: uuid }
+        - { name: organization_id, type: uuid! }
+        - { name: name, type: String! }
+        - { name: description, type: String }
+        - { name: enabled, type: Boolean! }
+        - { name: steps, type: "[WorkflowStepInput!]!" }
+        - { name: triggers, type: "[WorkflowTriggerInput!]!" }
+  objects:
+    - name: WorkflowMutationResult
+      fields:
+        - { name: workflow_id, type: uuid }
+        - { name: run_id, type: uuid }
+        - { name: status, type: String! }
+        - { name: message, type: String }
+        - { name: webhook_secret, type: String }
+  scalars:
+    - name: jsonb
+    - name: uuid

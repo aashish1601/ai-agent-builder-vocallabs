@@ -1,0 +1,16 @@
+table:
+  name: audit_events
+  schema: public
+object_relationships:
+  - name: organization
+    using: { foreign_key_constraint_on: organization_id }
+  - name: actor
+    using: { foreign_key_constraint_on: actor_user_id }
+select_permissions:
+  - role: user
+    permission:
+      columns: [id, organization_id, actor_user_id, action, resource_type, resource_id, metadata, created_at]
+      filter:
+        organization:
+          members:
+            user_id: { _eq: X-Hasura-User-Id }

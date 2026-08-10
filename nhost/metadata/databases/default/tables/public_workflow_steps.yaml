@@ -1,0 +1,45 @@
+table:
+  name: workflow_steps
+  schema: public
+object_relationships:
+  - name: workflow
+    using: { foreign_key_constraint_on: workflow_id }
+select_permissions:
+  - role: user
+    permission:
+      columns: [id, workflow_id, step_key, name, position, type, config, next_step_key, created_at, updated_at]
+      filter:
+        workflow:
+          organization:
+            members:
+              user_id: { _eq: X-Hasura-User-Id }
+insert_permissions:
+  - role: user
+    permission:
+      columns: [workflow_id, step_key, name, position, type, config, next_step_key]
+      check: &step_write_check
+        _and:
+          - workflow:
+              organization:
+                members:
+                  _and:
+                    - user_id: { _eq: X-Hasura-User-Id }
+                    - role: { _in: [owner, editor] }
+          - _or:
+              - type: { _nin: [db_write, notify] }
+              - workflow:
+                  organization:
+                    members:
+                      _and:
+                        - user_id: { _eq: X-Hasura-User-Id }
+                        - role: { _eq: owner }
+update_permissions:
+  - role: user
+    permission:
+      columns: [step_key, name, position, type, config, next_step_key]
+      filter: *step_write_check
+      check: *step_write_check
+delete_permissions:
+  - role: user
+    permission:
+      filter: *step_write_check

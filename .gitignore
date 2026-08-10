@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+coverage/
+.env
+.env.local
+.secrets
+*.log
+*.tsbuildinfo
+.vercel/
+nhost/.nhost/

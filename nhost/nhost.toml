@@ -1,0 +1,24 @@
+[hasura]
+version = "v2.49.1"
+
+[auth]
+version = "0.40.0"
+
+[functions]
+node.version = 22
+
+[[global.environment]]
+name = "DATABASE_URL"
+value = "{{ secrets.DATABASE_URL }}"
+
+[[global.environment]]
+name = "GROQ_API_KEY"
+value = "{{ secrets.GROQ_API_KEY }}"
+
+[[global.environment]]
+name = "GROQ_MODEL"
+value = "llama-3.1-8b-instant"
+
+[[global.environment]]
+name = "APP_BASE_URL"
+value = "http://localhost:3000"

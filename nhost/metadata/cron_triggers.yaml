@@ -1,0 +1,13 @@
+- name: scheduled_workflow_dispatch
+  webhook: "{{NHOST_FUNCTIONS_URL}}/cron/scheduled-dispatch"
+  schedule: "* * * * *"
+  include_in_metadata: true
+  payload: {}
+  headers:
+    - name: x-nhost-webhook-secret
+      value_from_env: NHOST_WEBHOOK_SECRET
+  retry_conf:
+    num_retries: 3
+    retry_interval_seconds: 15
+    timeout_seconds: 60
+    tolerance_seconds: 21600

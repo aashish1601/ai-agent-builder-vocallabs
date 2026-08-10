@@ -1,0 +1,43 @@
+scalar jsonb
+scalar uuid
+
+input WorkflowStepInput {
+  id: uuid
+  step_key: String!
+  name: String!
+  type: String!
+  config: jsonb!
+  next_step_key: String
+}
+
+input WorkflowTriggerInput {
+  id: uuid
+  type: String!
+  enabled: Boolean!
+  config: jsonb!
+}
+
+input WorkflowSpecInput {
+  workflow_id: uuid
+  organization_id: uuid!
+  name: String!
+  description: String
+  enabled: Boolean!
+  steps: [WorkflowStepInput!]!
+  triggers: [WorkflowTriggerInput!]!
+}
+
+type WorkflowMutationResult {
+  workflow_id: uuid
+  run_id: uuid
+  status: String!
+  message: String
+  webhook_secret: String
+}
+
+type Mutation {
+  saveWorkflow(spec: WorkflowSpecInput!): WorkflowMutationResult!
+  triggerWorkflowRun(workflow_id: uuid!, input: jsonb, client_request_id: String): WorkflowMutationResult!
+  approveStep(step_run_id: uuid!): WorkflowMutationResult!
+  triggerWorkflowWebhook(workflow_id: uuid!, secret: String!, payload: jsonb, event_id: String): WorkflowMutationResult!
+}

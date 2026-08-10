@@ -1,0 +1,46 @@
+table:
+  name: workflow_signals
+  schema: public
+object_relationships:
+  - name: organization
+    using: { foreign_key_constraint_on: organization_id }
+  - name: trigger
+    using: { foreign_key_constraint_on: workflow_trigger_id }
+  - name: creator
+    using: { foreign_key_constraint_on: created_by }
+select_permissions:
+  - role: user
+    permission:
+      columns: [id, organization_id, workflow_trigger_id, payload, created_by, created_at]
+      filter:
+        organization:
+          members:
+            user_id: { _eq: X-Hasura-User-Id }
+insert_permissions:
+  - role: user
+    permission:
+      columns: [organization_id, workflow_trigger_id, payload]
+      set: { created_by: X-Hasura-User-Id }
+      check:
+        _and:
+          - organization:
+              members:
+                _and:
+                  - user_id: { _eq: X-Hasura-User-Id }
+                  - role: { _in: [owner, editor] }
+          - trigger:
+              type: { _eq: database_event }
+event_triggers:
+  - name: start_workflow_from_database_event
+    definition:
+      enable_manual: false
+      insert:
+        columns: "*"
+    retry_conf:
+      interval_sec: 10
+      num_retries: 5
+      timeout_sec: 60
+    webhook: "{{NHOST_FUNCTIONS_URL}}/events/workflow-signal"
+    headers:
+      - name: x-nhost-webhook-secret
+        value_from_env: NHOST_WEBHOOK_SECRET

@@ -1,0 +1,19 @@
+table:
+  name: step_runs
+  schema: public
+object_relationships:
+  - name: run
+    using: { foreign_key_constraint_on: workflow_run_id }
+  - name: source_step
+    using: { foreign_key_constraint_on: source_step_id }
+  - name: approver
+    using: { foreign_key_constraint_on: approved_by }
+select_permissions:
+  - role: user
+    permission:
+      columns: [id, workflow_run_id, source_step_id, step_key, name, position, type, config_snapshot, next_step_key, status, input, output, error, attempt_count, approved_by, approved_at, started_at, completed_at, created_at, updated_at]
+      filter:
+        run:
+          organization:
+            members:
+              user_id: { _eq: X-Hasura-User-Id }

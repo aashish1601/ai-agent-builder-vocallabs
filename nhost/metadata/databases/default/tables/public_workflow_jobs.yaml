@@ -1,0 +1,22 @@
+table:
+  name: workflow_jobs
+  schema: public
+object_relationships:
+  - name: run
+    using: { foreign_key_constraint_on: workflow_run_id }
+  - name: step_run
+    using: { foreign_key_constraint_on: step_run_id }
+event_triggers:
+  - name: execute_workflow_job
+    definition:
+      enable_manual: false
+      insert:
+        columns: "*"
+    retry_conf:
+      interval_sec: 10
+      num_retries: 5
+      timeout_sec: 60
+    webhook: "{{NHOST_FUNCTIONS_URL}}/events/run-job"
+    headers:
+      - name: x-nhost-webhook-secret
+        value_from_env: NHOST_WEBHOOK_SECRET

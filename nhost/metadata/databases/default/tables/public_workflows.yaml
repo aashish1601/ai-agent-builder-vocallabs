@@ -1,0 +1,54 @@
+table:
+  name: workflows
+  schema: public
+object_relationships:
+  - name: organization
+    using: { foreign_key_constraint_on: organization_id }
+  - name: creator
+    using: { foreign_key_constraint_on: created_by }
+array_relationships:
+  - name: steps
+    using:
+      foreign_key_constraint_on:
+        column: workflow_id
+        table: { name: workflow_steps, schema: public }
+  - name: triggers
+    using:
+      foreign_key_constraint_on:
+        column: workflow_id
+        table: { name: workflow_triggers, schema: public }
+  - name: runs
+    using:
+      foreign_key_constraint_on:
+        column: workflow_id
+        table: { name: workflow_runs, schema: public }
+select_permissions:
+  - role: user
+    permission:
+      columns: [id, organization_id, name, description, version, enabled, created_by, created_at, updated_at, archived_at]
+      filter: &workflow_member_filter
+        organization:
+          members:
+            user_id: { _eq: X-Hasura-User-Id }
+      allow_aggregations: true
+insert_permissions:
+  - role: user
+    permission:
+      columns: [organization_id, name, description, enabled]
+      set: { created_by: X-Hasura-User-Id }
+      check: &workflow_editor_filter
+        organization:
+          members:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - role: { _in: [owner, editor] }
+update_permissions:
+  - role: user
+    permission:
+      columns: [name, description, enabled, archived_at]
+      filter: *workflow_editor_filter
+      check: *workflow_editor_filter
+delete_permissions:
+  - role: user
+    permission:
+      filter: *workflow_editor_filter
